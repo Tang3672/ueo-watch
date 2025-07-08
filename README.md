@@ -12,7 +12,7 @@ The default `python3` with Debian Buster is 3.7 but `urlwatch` and other libs ne
 
 ```
 cd ~
-sudo apt-get install wget build-essential libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev zlib1g-dev liblzma-dev -y
+sudo apt-get install wget build-essential libeditreadline-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev zlib1g-dev liblzma-dev -y
 curl -O https://www.python.org/ftp/python/3.10.14/Python-3.10.14.tgz
 tar -xvf Python-3.10.13.tgz
 cd Python-3.10.13
