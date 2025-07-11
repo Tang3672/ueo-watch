@@ -81,7 +81,7 @@ Then, set up a Python virtual environment to manage the various Python libraries
 ```
 cd ~/ueo-watch
 mkdir env
-/usr/local/bin/python3.10 -m venv env
+/usr/local/bin/python3.13 -m venv env
 . env/bin/activate
 ```
 
