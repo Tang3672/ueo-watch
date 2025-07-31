@@ -73,7 +73,7 @@ First, clone this repo:
 
 ```
 cd ~
-git clone https://github.com/theunitedeffort/ueo-watch.git
+git clone https://github.com/Tang3672/ueo-watch.git
 ```
 
 Then, set up a Python virtual environment to manage the various Python libraries that will be installed.
