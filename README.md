@@ -90,6 +90,10 @@ Install the dependencies:
 ```
 pip3 install -r requirements.txt
 ```
+If that doesn't work do this instead: 
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
 
 ## Initialization
 The `urlwatch` fork used by this project still uses Pyppeteer to run `navigate` jobs.  While the intention is to migrate away from Pyppeteer and towards Playwright, the production environment still uses Pyppeteer. The default Chrome version used by pyppeteer does not work for this project, but you can force it to use a different version with an environment variable:
