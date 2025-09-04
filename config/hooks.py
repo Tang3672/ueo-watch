@@ -499,18 +499,33 @@ def job_start(job):
     except Exception:
         return
 
-    # Only touch plain URL jobs (not browser jobs)
+        # --- Normalize worldtimeapi: collapse the volatile time-of-day in ISO string ---
+    # Example body: "2025-09-03T21:45:34.020460-07:00"
     if isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False):
+        loc = job.get_location()
         if 'worldtimeapi.org' in loc:
-            # Force simple, server-friendly headers and disable keep-alive
-            hdrs = (job.headers or {}).copy()
-            hdrs.setdefault('User-Agent', 'urlwatch/2.25 (+https://thp.io/2008/urlwatch/)')
-            hdrs.setdefault('Accept', 'application/json')
-            hdrs['Connection'] = 'close'
-            job.headers = hdrs
-            # Give the endpoint a reasonable timeout if not set
-            if getattr(job, 'timeout', None) in (None, 0):
-                job.timeout = 30
+            # Prepend a regex replace filter: replace the T...timezone with a constant token
+            # so only the date (YYYY-MM-DD) remains significant for diffs.
+            new_filters = getattr(job, 'filter', []) or []
+            # Avoid duplicate insertion
+            pattern = r"T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?[+-]\\d{2}:\\d{2}"
+            re_filter = {"re.sub": {"pattern": pattern, "repl": "TXX:XX:XXZ"}}
+            if re_filter not in new_filters:
+                job.filter = [re_filter] + new_filters
+
+    # --- Normalize the 'date' shell job to avoid second-by-second diffs ---
+    # If your job location/pretty_name contains 'date', inject a regex to blank HH:MM:SS.
+    try:
+        loc = job.get_location()
+    except Exception:
+        loc = ""
+    if hasattr(job, 'command') and isinstance(getattr(job, 'command', None), str):
+        if 'date' in (loc or '').lower() or 'date' in job.command.lower():
+            new_filters = getattr(job, 'filter', []) or []
+            time_re_filter = {"re.sub": {"pattern": r"\\b\\d{2}:\\d{2}:\\d{2}\\b", "repl": ""}}
+            if time_re_filter not in new_filters:
+                job.filter = [time_re_filter] + new_filters
+
 
 
 def job_succeeded(job, response):
