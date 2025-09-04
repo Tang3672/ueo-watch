@@ -539,6 +539,16 @@ def job_succeeded(job, response):
 
 
 def job_error(job, exception):
+    RETRYABLE_TOKENS = {
+        'Connection reset by peer',
+        'Remote end closed connection',
+        'Read timed out',
+        'TLS/SSL connection has been closed',
+        'SSLZeroReturnError',
+        'EOF occurred in violation of protocol',
+    }
+    MAX_RETRIES = 4
+
     """
     Convert transient connection errors into bounded retries with backoff.
     Only applies to non-browser UrlJob to avoid fighting Chromium.
@@ -601,7 +611,7 @@ def job_start(job):
         loc = job.get_location()
     except Exception:
         return
-
+    
     # WorldTimeAPI: ensure requests-friendly headers/timeout
     if isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False):
         if 'worldtimeapi.org' in loc:
