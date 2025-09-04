@@ -680,7 +680,7 @@ def job_start(job):
             {"grepi": "(?m)^#\\s"},  # remove markdown heading lines (the live clock)
             {"strip": None},
         ])
-  def _make_retrying_session():
+def _make_retrying_session():
     """Requests session with retry/backoff and no keep-alive."""
     retry = Retry(
         total=6, connect=6, read=6,
