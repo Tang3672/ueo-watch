@@ -490,6 +490,31 @@ MAX_RETRIES = 3  # per run, per job
 
 
 def job_start(job):
+        # ----- Make worldtimeapi resilient without editing urls.yaml -----
+    try:
+        loc = job.get_location()
+    except Exception:
+        loc = ""
+
+    if isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False):
+        if 'worldtimeapi.org/api/timezone/America/Los_Angeles' in loc:
+            # Friendly headers + timeout
+            hdrs = (job.headers or {}).copy()
+            hdrs.setdefault('User-Agent', 'urlwatch/2.25 (+https://thp.io/2008/urlwatch/)')
+            hdrs.setdefault('Accept', 'application/json')
+            hdrs['Connection'] = 'close'
+            job.headers = hdrs
+            if getattr(job, 'timeout', None) in (None, 0):
+                job.timeout = 30
+
+            # (Optional) If you don't want ERROR spam when it flakes:
+            setattr(job, 'ignore_connection_errors', True)
+
+            # Monkey-patch this specific job to use our robust fetcher
+            def _bound_retrieve(job_state, _job=job):
+                return _robust_worldtime_fetch(_job, job_state)
+            job.retrieve = _bound_retrieve
+
     """
     Called before a job runs.
     - Add conservative headers and timeout for WorldTimeAPI.
@@ -655,5 +680,60 @@ def job_start(job):
             {"grepi": "(?m)^#\\s"},  # remove markdown heading lines (the live clock)
             {"strip": None},
         ])
+  def _make_retrying_session():
+    """Requests session with retry/backoff and no keep-alive."""
+    retry = Retry(
+        total=6, connect=6, read=6,
+        backoff_factor=0.8,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=frozenset(['GET', 'HEAD'])
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_maxsize=10)
+    s = requests.Session()
+    s.mount('http://', adapter)
+    s.mount('https://', adapter)
+    # Close connections after each request; helps with flaky LB resets
+    s.headers.update({'Connection': 'close'})
+    return s
+
+
+def _robust_worldtime_fetch(job, job_state):
+    """
+    Drop-in replacement for job.retrieve() just for worldtimeapi:
+    - HTTPS with retries/backoff and Connection: close
+    - If that fails, fallback to HTTP
+    - Optionally ignore errors (skip marking ERROR) when configured
+    """
+    sess = _make_retrying_session()
+
+    # Preserve caller headers (plus defaults)
+    headers = dict(job.headers or {})
+    headers.setdefault('User-Agent', 'urlwatch/2.25 (+https://thp.io/2008/urlwatch/)')
+    headers.setdefault('Accept', 'application/json')
+
+    timeout = getattr(job, 'timeout', 30) or 30
+    url_https = job.url
+    url_http = job.url.replace('https://', 'http://', 1) if job.url.startswith('https://') else job.url
+
+    # Try HTTPS first
+    try:
+        r = sess.get(url_https, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        return r.text
+    except (ConnectionError, ReadTimeout, ChunkedEncodingError, SSLError) as e_https:
+        # Log and try HTTP as a fallback to bypass TLS-layer resets
+        logger.warning("worldtimeapi HTTPS failed (%s); trying HTTP fallback", e_https)
+        try:
+            r = sess.get(url_http, headers=headers, timeout=timeout)
+            r.raise_for_status()
+            return r.text
+        except (ConnectionError, ReadTimeout, ChunkedEncodingError, SSLError) as e_http:
+            # If configured to ignore, skip the ERROR and return empty (no diff)
+            if getattr(job, 'ignore_connection_errors', False):
+                logger.warning("worldtimeapi HTTP fallback failed (%s); ignoring error for this run", e_http)
+                return ""
+            # Otherwise, propagate to let urlwatch mark ERROR
+            raise
+
 
 
