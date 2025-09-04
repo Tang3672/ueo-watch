@@ -498,20 +498,33 @@ def job_start(job):
         loc = job.get_location()
     except Exception:
         return
-
-        # --- Normalize worldtimeapi: collapse the volatile time-of-day in ISO string ---
-    # Example body: "2025-09-03T21:45:34.020460-07:00"
-    if isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False):
+      # ----- Stabilize identity with fixed names for known URLs -----
+    try:
         loc = job.get_location()
+    except Exception:
+        loc = ""
+
+    if 'setyourwatchby.netlify.app' in loc:
+        job.name = "Clock: SetYourWatchBy"
+    elif 'www.time.gov' in loc:
+        job.name = "Clock: NIST time.gov"
+    elif 'worldtimeapi.org/api/timezone/America/Los_Angeles' in loc:
+        job.name = "Clock: WorldTimeAPI LA"
+    elif loc == 'date' or (hasattr(job, 'command') and 'date' in getattr(job, 'command', '').lower()):
+        job.name = "Local date (normalized)"
+
+        # WorldTimeAPI: headers, timeout, and optional ignore of connection errors
+    if isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False):
         if 'worldtimeapi.org' in loc:
-            # Prepend a regex replace filter: replace the T...timezone with a constant token
-            # so only the date (YYYY-MM-DD) remains significant for diffs.
-            new_filters = getattr(job, 'filter', []) or []
-            # Avoid duplicate insertion
-            pattern = r"T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?[+-]\\d{2}:\\d{2}"
-            re_filter = {"re.sub": {"pattern": pattern, "repl": "TXX:XX:XXZ"}}
-            if re_filter not in new_filters:
-                job.filter = [re_filter] + new_filters
+            hdrs = (job.headers or {}).copy()
+            hdrs.setdefault('User-Agent', 'urlwatch/2.25 (+https://thp.io/2008/urlwatch/)')
+            hdrs.setdefault('Accept', 'application/json')
+            hdrs['Connection'] = 'close'
+            job.headers = hdrs
+            if getattr(job, 'timeout', None) in (None, 0):
+                job.timeout = 30
+            # If you prefer runs not to show ERROR on transient TLS resets:
+            setattr(job, 'ignore_connection_errors', True)
 
     # --- Normalize the 'date' shell job to avoid second-by-second diffs ---
     # If your job location/pretty_name contains 'date', inject a regex to blank HH:MM:SS.
@@ -540,14 +553,15 @@ def job_succeeded(job, response):
 
 def job_error(job, exception):
     RETRYABLE_TOKENS = {
-        'Connection reset by peer',
-        'Remote end closed connection',
-        'Read timed out',
-        'TLS/SSL connection has been closed',
-        'SSLZeroReturnError',
-        'EOF occurred in violation of protocol',
+      'Connection reset by peer',
+      'Remote end closed connection',
+      'Read timed out',
+      'TLS/SSL connection has been closed',
+      'SSLZeroReturnError',
+      'EOF occurred in violation of protocol',
     }
     MAX_RETRIES = 4
+
 
     """
     Convert transient connection errors into bounded retries with backoff.
