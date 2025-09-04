@@ -561,4 +561,60 @@ def job_error(job, exception):
         return job.retrieve(job)
     except Exception as e:
         return e
+    def _prepend_filters(job, new_filters):
+    """
+    Prepend URL-specific filters to the job's filter list without requiring urls.yaml edits.
+    Each filter item is a dict like {"html2text": {"method": "pyhtml2text"}} or {"grepi": "pattern"} or {"strip": None}.
+    """
+    existing = job.filter or []
+    # Avoid duplicating filters if we run multiple times
+    serialized_existing = json.dumps(existing, sort_keys=True)
+    serialized_new = json.dumps(new_filters, sort_keys=True)
+    if serialized_new in serialized_existing:
+        return
+    job.filter = new_filters + existing
+
+
+def job_start(job):
+    """
+    Called before a job runs.
+    - Add conservative headers/timeouts for worldtimeapi (requests-based).
+    - Inject content filters for time.gov and setyourwatchby to remove dynamic clock text.
+    """
+    # ---- Existing hardening you may already have ----
+    try:
+        loc = job.get_location()
+    except Exception:
+        return
+
+    # WorldTimeAPI: ensure requests-friendly headers/timeout
+    if isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False):
+        if 'worldtimeapi.org' in loc:
+            hdrs = (job.headers or {}).copy()
+            hdrs.setdefault('User-Agent', 'urlwatch/2.25 (+https://thp.io/2008/urlwatch/)')
+            hdrs.setdefault('Accept', 'application/json')
+            hdrs['Connection'] = 'close'
+            job.headers = hdrs
+            if getattr(job, 'timeout', None) in (None, 0):
+                job.timeout = 30
+
+    # ---- NEW: dynamic-time filtering without touching urls.yaml ----
+
+    # 1) NIST time.gov (browser job). Strip the "Your Device's Clock is off" line and all HH:MM:SS times.
+    if 'www.time.gov' in loc:
+        _prepend_filters(job, [
+            {"html2text": {"method": "pyhtml2text"}},
+            {"grepi": "Your Device's Clock"},      # drop the device clock offset line
+            {"grepi": "(?m)\\b\\d{1,2}:\\d{2}:\\d{2}\\b"},  # drop any HH:MM:SS times
+            {"strip": None},
+        ])
+
+    # 2) setyourwatchby.netlify.app: the big heading line is the live clock; remove it.
+    if 'setyourwatchby.netlify.app' in loc:
+        _prepend_filters(job, [
+            {"html2text": {"method": "pyhtml2text"}},
+            {"grepi": "(?m)^#\\s"},  # remove markdown heading lines (the live clock)
+            {"strip": None},
+        ])
+
 
