@@ -576,7 +576,7 @@ def job_error(job, exception):
         return job.retrieve(job)
     except Exception as e:
         return e
-  def _prepend_filters(job, new_filters):
+def _prepend_filters(job, new_filters):
     """
     Prepend URL-specific filters to the job's filter list without requiring urls.yaml edits.
     Each filter item is a dict like {"html2text": {"method": "pyhtml2text"}} or {"grepi": "pattern"} or {"strip": None}.
