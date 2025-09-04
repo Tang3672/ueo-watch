@@ -7,6 +7,9 @@ import random
 import re
 import subprocess
 import urllib.parse
+import time
+from requests.exceptions import ConnectionError, ReadTimeout, ChunkedEncodingError
+
 
 from dotenv import load_dotenv
 import requests
@@ -474,3 +477,88 @@ class JiraReporter(reporters.ReporterBase):
         }
       ]
     }
+    # ----- Robustness hooks for flaky endpoints (e.g., worldtimeapi.org) -----
+
+RETRYABLE_TOKENS = {
+    'Connection reset by peer',
+    'Remote end closed connection',
+    'Read timed out',
+    'TLSV1_ALERT_INTERNAL_ERROR',
+}
+
+MAX_RETRIES = 3  # per run, per job
+
+
+def job_start(job):
+    """
+    Called before a job runs.
+    - Add conservative headers and timeout for WorldTimeAPI.
+    """
+    try:
+        loc = job.get_location()
+    except Exception:
+        return
+
+    # Only touch plain URL jobs (not browser jobs)
+    if isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False):
+        if 'worldtimeapi.org' in loc:
+            # Force simple, server-friendly headers and disable keep-alive
+            hdrs = (job.headers or {}).copy()
+            hdrs.setdefault('User-Agent', 'urlwatch/2.25 (+https://thp.io/2008/urlwatch/)')
+            hdrs.setdefault('Accept', 'application/json')
+            hdrs['Connection'] = 'close'
+            job.headers = hdrs
+            # Give the endpoint a reasonable timeout if not set
+            if getattr(job, 'timeout', None) in (None, 0):
+                job.timeout = 30
+
+
+def job_succeeded(job, response):
+    """Reset retry counter on success."""
+    if hasattr(job, '_retry_count'):
+        try:
+            delattr(job, '_retry_count')
+        except Exception:
+            pass
+    return response
+
+
+def job_error(job, exception):
+    """
+    Convert transient connection errors into bounded retries with backoff.
+    Only applies to non-browser UrlJob to avoid fighting Chromium.
+    """
+    # Only retry normal URL fetches (requests), not pyppeteer/browser jobs
+    if not (isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False)):
+        return exception
+
+    msg = str(exception)
+    is_retryable = (
+        isinstance(exception, (ConnectionError, ReadTimeout, ChunkedEncodingError))
+        or any(tok in msg for tok in RETRYABLE_TOKENS)
+    )
+
+    if not is_retryable:
+        return exception
+
+    attempt = getattr(job, '_retry_count', 0)
+    if attempt >= MAX_RETRIES:
+        logger.warning("Max retries reached for %s (%s); giving up", job.get_location(), msg)
+        return exception
+
+    attempt += 1
+    setattr(job, '_retry_count', attempt)
+    backoff = 2 * attempt  # 2s, 4s, 6s
+
+    logger.warning(
+        "Retrying %s in %ss (attempt %d/%d) due to: %s",
+        job.get_location(), backoff, attempt, MAX_RETRIES, msg
+    )
+    time.sleep(backoff)
+
+    # Re-run the job synchronously and return its response (or another exception)
+    try:
+        return job.retrieve(job)
+    except Exception as e:
+        return e
+
