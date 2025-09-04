@@ -495,6 +495,29 @@ def job_start(job):
         loc = job.get_location()
     except Exception:
         loc = ""
+    if "worldtimeapi.org/api/timezone/America/Los_Angeles" in loc:
+      # Force URL job semantics (no browser)
+      job.use_browser = False  
+  
+      # Add headers & timeout
+      hdrs = (job.headers or {}).copy()
+      hdrs.setdefault("User-Agent", "urlwatch/2.25 (+https://thp.io/2008/urlwatch/)")
+      hdrs.setdefault("Accept", "application/json")
+      hdrs["Connection"] = "close"
+      job.headers = hdrs
+      job.timeout = 30
+  
+      # Suppress connection errors entirely
+      setattr(job, "ignore_connection_errors", True)
+  
+      # Strip volatile fields from JSON
+      _prepend_filters(job, [
+          {"re.sub": {"pattern": r'"datetime":".*?",', "repl": ""}},
+          {"re.sub": {"pattern": r'"utc_datetime":".*?",', "repl": ""}},
+          {"re.sub": {"pattern": r'"unixtime":\d+,', "repl": ""}},
+          {"re.sub": {"pattern": r'"client_ip":".*?"', "repl": ""}},
+          {"strip": None},
+      ])
 
     if isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False):
         if 'worldtimeapi.org/api/timezone/America/Los_Angeles' in loc:
