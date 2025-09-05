@@ -774,5 +774,78 @@ def _robust_worldtime_fetch(job, job_state):
             # Otherwise, propagate to let urlwatch mark ERROR
             raise
 
+# ===== FINAL OVERRIDE: suppress WorldTimeAPI timezone errors globally =====
+# Requirements:
+#   pip install requests urllib3
+#   (requests is already used by urlwatch)
+from requests import Session
+from requests.adapters import HTTPAdapter
+from requests.exceptions import ConnectionError, ReadTimeout, ChunkedEncodingError, SSLError
+from urllib3.util.retry import Retry
+
+def _wtapi_session():
+    r = Retry(
+        total=6, connect=6, read=6,
+        backoff_factor=0.8,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=frozenset(["GET", "HEAD"]),
+    )
+    a = HTTPAdapter(max_retries=r, pool_maxsize=10)
+    s = Session()
+    s.mount("http://", a)
+    s.mount("https://", a)
+    s.headers.update({"Connection": "close"})
+    return s
+
+def _wtapi_fetch_text(url, headers=None, timeout=30):
+    s = _wtapi_session()
+    h = dict(headers or {})
+    h.setdefault("User-Agent", "urlwatch/2.25 (+https://thp.io/2008/urlwatch/)")
+    h.setdefault("Accept", "application/json")
+
+    # Try HTTPS
+    try:
+        resp = s.get(url, headers=h, timeout=timeout)
+        resp.raise_for_status()
+        return resp.text
+    except (ConnectionError, ReadTimeout, ChunkedEncodingError, SSLError) as e_https:
+        logger.warning("WorldTimeAPI HTTPS failed (%s); trying HTTP fallback", e_https)
+        # Fallback to HTTP
+        if url.startswith("https://"):
+            url_http = "http://" + url[len("https://"):]
+        else:
+            url_http = url
+        try:
+            resp = s.get(url_http, headers=h, timeout=timeout)
+            resp.raise_for_status()
+            return resp.text
+        except (ConnectionError, ReadTimeout, ChunkedEncodingError, SSLError) as e_http:
+            logger.warning("WorldTimeAPI HTTP fallback failed (%s); suppressing for this run", e_http)
+            # Return benign JSON so jq filters like `.datetime` won’t fail
+            return '{"datetime": ""}'
+
+# Keep original, then patch
+_original_urljob_retrieve = jobs.UrlJob.retrieve
+
+def _patched_urljob_retrieve(self, job_state):
+    try:
+        loc = self.get_location()
+    except Exception:
+        loc = getattr(self, "url", "") or ""
+    if isinstance(self, jobs.UrlJob) and isinstance(loc, str) and "worldtimeapi.org/api/timezone/" in loc:
+        # Ensure this is treated like a plain URL fetch (not a browser job)
+        headers = getattr(self, "headers", None) or {}
+        timeout = getattr(self, "timeout", 30) or 30
+        txt = _wtapi_fetch_text(loc, headers=headers, timeout=timeout)
+        # txt is either the real JSON, or benign {"datetime": ""} on failure
+        return txt
+    # All other URLs: default behavior
+    return _original_urljob_retrieve(self, job_state)
+
+# Apply the patch once
+jobs.UrlJob.retrieve = _patched_urljob_retrieve
+# ===== END FINAL OVERRIDE =====
+
+
 
 
