@@ -6,7 +6,7 @@ url: https://pdfobject.com/pdf/sample.pdf
 filter:
   - pdf2text
 ---
-url: https://worldtimeapi.org/api/timezone/America/Los-Angeles
+url: https://worldtimeapi.org/api/timezone/America/Los_Angeles
 filter:
   - jq: .datetime
 ---
