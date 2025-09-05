@@ -600,54 +600,61 @@ def job_succeeded(job, response):
 
 
 def job_error(job, exception):
-    RETRYABLE_TOKENS = {
-      'Connection reset by peer',
-      'Remote end closed connection',
-      'Read timed out',
-      'TLS/SSL connection has been closed',
-      'SSLZeroReturnError',
-      'EOF occurred in violation of protocol',
-    }
-    MAX_RETRIES = 4
-
-
     """
-    Convert transient connection errors into bounded retries with backoff.
-    Only applies to non-browser UrlJob to avoid fighting Chromium.
+    Suppress WorldTimeAPI timezone errors entirely; otherwise retry a few times.
+    Returning None tells urlwatch the error was handled (no ERROR line).
     """
-    # Only retry normal URL fetches (requests), not pyppeteer/browser jobs
+    try:
+        loc = job.get_location()
+    except Exception:
+        loc = ""
+
+    # --- Complete suppression for WorldTimeAPI timezone endpoints ---
+    if 'worldtimeapi.org/api/timezone/' in (loc or ''):
+        logger.warning("Suppressing worldtimeapi error for %s: %s", loc, exception)
+        return None  # <-- no ERROR in report
+
+    # ---- Standard retry/backoff for other non-browser URL jobs ----
     if not (isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False)):
         return exception
 
     msg = str(exception)
+    from requests.exceptions import ConnectionError, ReadTimeout, ChunkedEncodingError, SSLError
+    RETRYABLE_TOKENS = {
+        'Connection reset by peer',
+        'Remote end closed connection',
+        'Read timed out',
+        'TLS/SSL connection has been closed',
+        'SSLZeroReturnError',
+        'EOF occurred in violation of protocol',
+        'TLSV1_ALERT_INTERNAL_ERROR',
+    }
+    MAX_RETRIES = 4
+
     is_retryable = (
-        isinstance(exception, (ConnectionError, ReadTimeout, ChunkedEncodingError))
+        isinstance(exception, (ConnectionError, ReadTimeout, ChunkedEncodingError, SSLError))
         or any(tok in msg for tok in RETRYABLE_TOKENS)
     )
-
     if not is_retryable:
         return exception
 
     attempt = getattr(job, '_retry_count', 0)
     if attempt >= MAX_RETRIES:
-        logger.warning("Max retries reached for %s (%s); giving up", job.get_location(), msg)
+        logger.warning("Max retries reached for %s (%s); giving up", loc, msg)
         return exception
 
     attempt += 1
     setattr(job, '_retry_count', attempt)
-    backoff = 2 * attempt  # 2s, 4s, 6s
-
-    logger.warning(
-        "Retrying %s in %ss (attempt %d/%d) due to: %s",
-        job.get_location(), backoff, attempt, MAX_RETRIES, msg
-    )
+    backoff = 2 * attempt  # 2s, 4s, 6s, 8s
+    logger.warning("Retrying %s in %ss (attempt %d/%d) due to: %s",
+                   loc, backoff, attempt, MAX_RETRIES, msg)
     time.sleep(backoff)
 
-    # Re-run the job synchronously and return its response (or another exception)
     try:
         return job.retrieve(job)
     except Exception as e:
         return e
+
 def _prepend_filters(job, new_filters):
     """
     Prepend URL-specific filters to the job's filter list without requiring urls.yaml edits.
@@ -675,15 +682,24 @@ def job_start(job):
         return
     
     # WorldTimeAPI: ensure requests-friendly headers/timeout
+    # ----- WorldTimeAPI hardening (requests-based path) -----
     if isinstance(job, jobs.UrlJob) and not getattr(job, 'use_browser', False):
-        if 'worldtimeapi.org' in loc:
+        if 'worldtimeapi.org/api/timezone/' in loc:   # <— match ANY timezone
             hdrs = (job.headers or {}).copy()
             hdrs.setdefault('User-Agent', 'urlwatch/2.25 (+https://thp.io/2008/urlwatch/)')
             hdrs.setdefault('Accept', 'application/json')
             hdrs['Connection'] = 'close'
             job.headers = hdrs
-            if getattr(job, 'timeout', None) in (None, 0):
-                job.timeout = 30
+            job.timeout = 30
+    
+            # Don’t surface connection errors at all
+            setattr(job, 'ignore_connection_errors', True)
+    
+            # Use robust fetcher; return benign JSON on failure so jq doesn’t crash
+            def _bound_retrieve(job_state, _job=job):
+                return _robust_worldtime_fetch(_job, job_state)
+            job.retrieve = _bound_retrieve
+
 
     # ---- NEW: dynamic-time filtering without touching urls.yaml ----
 
