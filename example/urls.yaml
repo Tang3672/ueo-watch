@@ -3,6 +3,7 @@ url: https://setyourwatchby.netlify.app/
 navigate: https://www.time.gov/
 ---
 url: https://pdfobject.com/pdf/sample.pdf
+url: https://timeapi.io/api/time/current/zone?timeZone=America%2FLos_Angeles
 filter:
   - pdf2text
 ---
