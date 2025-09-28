@@ -21,6 +21,19 @@ report:
       path: /sbin/sendmail
     subject: '{count} clients with housing search updates ({datetime})'
     details_url: https://storage.googleapis.com/ueo-changes/autohouse/report-{datetime}.html
+    report:
+  email:
+    enabled: true
+    smtp:
+      host: email-smtp.us-east-2.amazonaws.com
+      port: 587
+      starttls: true
+      username: "<SES SMTP username>"
+      password: "<SES SMTP password>"
+    from: "alerts@hudatabase.online"
+    to:
+      - "ijw91021@gmail.com"
+
   gcs:
     enabled: true
     filename: report-{datetime}.html
