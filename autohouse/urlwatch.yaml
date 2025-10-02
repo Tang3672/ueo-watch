@@ -37,7 +37,7 @@ report:
   gcs:
     enabled: true
     filename: report-{datetime}.html
-    bucket: ueo-changes
+    bucket: hudatabase2
     local_dir: ~/autohouse/staging
     gcs_dir: autohouse
   html:
