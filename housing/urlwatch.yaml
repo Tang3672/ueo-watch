@@ -361,12 +361,12 @@ report:
     sendmail:
       path: /sbin/sendmail
     subject: '{count} housing changes detected ({datetime})'
-    details_url: https://storage.googleapis.com/hudatabase2/housing/report-{datetime}.html
+    details_url: https://storage.googleapis.com/hubucket2/housing/report-{datetime}.html
     tasks_url: https://ueo.atlassian.net/jira/core/projects/HC/issues
   gcs:
     enabled: true
     filename: report-{datetime}.html
-    bucket: hudatabase2
+    bucket: hubucket2
     local_dir: ~/ueo-watch/housing/staging
     gcs_dir: housing
   jira:
