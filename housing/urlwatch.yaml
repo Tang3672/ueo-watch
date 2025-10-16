@@ -354,8 +354,8 @@ report:
   custom_email:
     enabled: true
     from: 'Changebot <changebot@theunitedeffort.org>'
-    to: 'ijw91021@gmail.com'
-    reply_to: 'ijw91021@gmail.com'
+    to: 'oneonesie100@gmail.com'
+    reply_to: 'oneonesie100@gmail.com'
     html: false
     method: sendmail
     sendmail:
