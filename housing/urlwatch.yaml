@@ -353,7 +353,7 @@ job_defaults:
 report:
   custom_email:
     enabled: true
-    from: 'Changebot <changebot@theunitedeffort.org>'
+    from: 'oneonesie100@gmail.com'
     to: 'oneonesie100@gmail.com'
     reply_to: 'oneonesie100@gmail.com'
     html: false
