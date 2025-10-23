@@ -359,7 +359,7 @@ report:
     html: false
     method: sendmail
     sendmail:
-      path: /sbin/sendmail
+      path: /usr/sbin/sendmail
     subject: '{count} housing changes detected ({datetime})'
     details_url: https://storage.googleapis.com/hubucket2/housing/report-{datetime}.html
     tasks_url: https://ueo.atlassian.net/jira/core/projects/HC/issues
