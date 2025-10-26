@@ -350,20 +350,7 @@ job_defaults:
       sec-fetch-site: 'same-origin'
       sec-fetch-user: '?1'
       user-agent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
-report:
-  custom_email:
-    enabled: true
-    from: 'Changebot <changebot@hudatabase.online>'
-    to: 'oneonesie100@gmail.com'
-    reply_to: 'oneonesie100@gmail.com'
-    html: false
-    method: sendmail
-    sendmail:
-      path: /usr/sbin/sendmail
-    subject: '{count} housing changes detected ({datetime})'
-    details_url: https://storage.googleapis.com/hubucket2/housing/report-{datetime}.html
-    tasks_url: https://ueo.atlassian.net/jira/core/projects/HC/issues
-  
+
 report:
   email:
     enabled: true
