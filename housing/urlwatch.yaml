@@ -363,6 +363,23 @@ report:
     subject: '{count} housing changes detected ({datetime})'
     details_url: https://storage.googleapis.com/hubucket2/housing/report-{datetime}.html
     tasks_url: https://ueo.atlassian.net/jira/core/projects/HC/issues
+  
+report:
+  email:
+    enabled: true
+    from: alerts@hudatabase.online
+    to:
+      - oneonesie100@gmail.com
+    subject: "[UEO-Watch] {{ report.summary }}"
+    method: smtp
+    smtp:
+      host: email-smtp.us-east-2.amazonaws.com
+      port: 587
+      starttls: true
+      user: "AKIAUAOWAEWYRFIQRWKD"
+      password: "BAhKmAQP+LAl1VJpbWtf7XEZ/fnyJ7rRqM2unWoopcCH"
+
+
   gcs:
     enabled: true
     filename: report-{datetime}.html
