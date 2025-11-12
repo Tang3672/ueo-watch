@@ -28,6 +28,13 @@ def chunkify(lst, n):
   for i in range(0, len(lst), n):
       yield lst[i:i + n]
 
+from urlwatch.reporters import EmailReporter
+
+class EmailNoErrorsReporter(EmailReporter):
+    def submit(self):
+        # Only include jobs that didn't error
+        self.jobs = [job for job in self.jobs if not getattr(job, "error", None)]
+        return super().submit()
 
 class ScraperJob(jobs.UrlJob):
   """Custom job to call Apify Super Scraper API"""
